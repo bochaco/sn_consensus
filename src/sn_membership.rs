@@ -14,8 +14,8 @@ pub type Generation = u64;
 
 #[derive(Debug)]
 pub struct HistoryEntry<T: Proposition> {
-    votes: BTreeSet<SignedVote<Reconfig<T>>>,
-    proposals: BTreeMap<Reconfig<T>, Signature>,
+    pub votes: BTreeSet<SignedVote<Reconfig<T>>>,
+    pub proposals: BTreeMap<Reconfig<T>, Signature>,
 }
 
 #[derive(Debug)]
@@ -154,7 +154,7 @@ impl<T: Proposition> Membership<T> {
     pub fn handle_signed_vote(
         &mut self,
         signed_vote: SignedVote<Reconfig<T>>,
-    ) -> Result<Option<SignedVote<Reconfig<T>>>> {
+    ) -> Result<VoteResponse<Reconfig<T>>> {
         self.validate_signed_vote(&signed_vote)?;
         self.log_signed_vote(&signed_vote);
 
@@ -162,21 +162,26 @@ impl<T: Proposition> Membership<T> {
             .consensus
             .handle_signed_vote(signed_vote, self.pending_gen)?;
 
-        match vote_response {
+        match &vote_response {
             VoteResponse::Broadcast(vote) => {
                 self.pending_gen = vote.vote.gen;
-                Ok(Some(vote))
             }
             VoteResponse::Decided { votes, proposals } => {
-                self.history
-                    .insert(self.pending_gen, HistoryEntry { votes, proposals });
+                self.history.insert(
+                    self.pending_gen,
+                    HistoryEntry {
+                        votes: votes.clone(),
+                        proposals: proposals.clone(),
+                    },
+                );
                 self.gen = self.pending_gen;
                 // clear our pending votes
                 self.consensus.votes = Default::default();
-                Ok(None)
             }
-            VoteResponse::WaitingForMoreVotes => Ok(None),
+            VoteResponse::WaitingForMoreVotes => {}
         }
+
+        Ok(vote_response)
     }
 
     pub fn sign_vote(&self, vote: Vote<Reconfig<T>>) -> Result<SignedVote<Reconfig<T>>> {
